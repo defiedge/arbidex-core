@@ -114,6 +114,12 @@ contract UniswapV3Pool is IUniswapV3Pool, NoDelegateCall {
         _;
     }
 
+    /// @dev Prevents calling a function from anyone except the factory
+    modifier onlyFactory() {
+        require(msg.sender == factory, "Not Factory");
+        _;
+    }
+
     constructor() {
         int24 _tickSpacing;
         (factory, token0, token1, fee, _tickSpacing) = IUniswapV3PoolDeployer(msg.sender).parameters();
@@ -275,17 +281,20 @@ contract UniswapV3Pool is IUniswapV3Pool, NoDelegateCall {
 
         (uint16 cardinality, uint16 cardinalityNext) = observations.initialize(_blockTimestamp());
 
+        uint8 feeProtocol = IUniswapV3Factory(factory).defaultProtocolFees();
+
         slot0 = Slot0({
             sqrtPriceX96: sqrtPriceX96,
             tick: tick,
             observationIndex: 0,
             observationCardinality: cardinality,
             observationCardinalityNext: cardinalityNext,
-            feeProtocol: 0,
+            feeProtocol: feeProtocol,
             unlocked: true
         });
 
         emit Initialize(sqrtPriceX96, tick);
+        emit SetFeeProtocol(0, 0, slot0.feeProtocol % 16, slot0.feeProtocol >> 4);
     }
 
     struct ModifyPositionParams {
@@ -836,8 +845,8 @@ contract UniswapV3Pool is IUniswapV3Pool, NoDelegateCall {
     /// @inheritdoc IUniswapV3PoolOwnerActions
     function setFeeProtocol(uint8 feeProtocol0, uint8 feeProtocol1) external override lock onlyFactoryOwner {
         require(
-            (feeProtocol0 == 0 || (feeProtocol0 >= 4 && feeProtocol0 <= 10)) &&
-                (feeProtocol1 == 0 || (feeProtocol1 >= 4 && feeProtocol1 <= 10))
+            (feeProtocol0 == 0 || (feeProtocol0 >= 1 && feeProtocol0 <= 10)) &&
+                (feeProtocol1 == 0 || (feeProtocol1 >= 1 && feeProtocol1 <= 10))
         );
         uint8 feeProtocolOld = slot0.feeProtocol;
         slot0.feeProtocol = feeProtocol0 + (feeProtocol1 << 4);
@@ -849,7 +858,7 @@ contract UniswapV3Pool is IUniswapV3Pool, NoDelegateCall {
         address recipient,
         uint128 amount0Requested,
         uint128 amount1Requested
-    ) external override lock onlyFactoryOwner returns (uint128 amount0, uint128 amount1) {
+    ) external override lock onlyFactory returns (uint128 amount0, uint128 amount1) {
         amount0 = amount0Requested > protocolFees.token0 ? protocolFees.token0 : amount0Requested;
         amount1 = amount1Requested > protocolFees.token1 ? protocolFees.token1 : amount1Requested;
 

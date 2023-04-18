@@ -9,6 +9,18 @@ interface IUniswapV3Factory {
     /// @param newOwner The owner after the owner was changed
     event OwnerChanged(address indexed oldOwner, address indexed newOwner);
 
+    /// @notice Emitted when the protocol fee is changed by the owner
+    /// @param feeProtocol0Old The previous value of the default token0 protocol fee
+    /// @param feeProtocol1Old The previous value of the default token1 protocol fee
+    /// @param feeProtocol0New The updated value of the default token0 protocol fee
+    /// @param feeProtocol1New The updated value of the default token1 protocol fee
+    event DefaultProtocolFeesChanged(
+        uint8 feeProtocol0Old,
+        uint8 feeProtocol1Old,
+        uint8 feeProtocol0New,
+        uint8 feeProtocol1New
+    );
+
     /// @notice Emitted when a pool is created
     /// @param token0 The first token of the pool by address sort order
     /// @param token1 The second token of the pool by address sort order
@@ -75,4 +87,23 @@ interface IUniswapV3Factory {
     /// @param fee The fee amount to enable, denominated in hundredths of a bip (i.e. 1e-6)
     /// @param tickSpacing The spacing between ticks to be enforced for all pools created with the given fee amount
     function enableFeeAmount(uint24 fee, int24 tickSpacing) external;
+
+    /// @notice Returns the current default protocol fees for each pool
+    /// @dev Can be changed by the current owner via setDefaultProtocolFees
+    function defaultProtocolFees() external view returns (uint8);
+
+    /// @notice Set the default denominator of the protocol's % share of the fees
+    /// @param feeProtocol0 new default protocol fee for token0 of the pool
+    /// @param feeProtocol1 new default protocol fee for token1 of the pool
+    function setDefaultProtocolFees(uint8 feeProtocol0, uint8 feeProtocol1) external;
+
+    /// @notice Collect protocol fees from the pool
+    /// @param pool address of the pool to collect fees
+    /// @param amount0Requested token0 amount to collect
+    /// @param amount1Requested token1 amount to collect
+    function collectProtocolFees(
+        address pool,
+        uint128 amount0Requested,
+        uint128 amount1Requested
+    ) external returns (uint128 amount0, uint128 amount1);
 }

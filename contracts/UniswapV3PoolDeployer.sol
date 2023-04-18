@@ -17,6 +17,24 @@ contract UniswapV3PoolDeployer is IUniswapV3PoolDeployer {
     /// @inheritdoc IUniswapV3PoolDeployer
     Parameters public override parameters;
 
+    address public factoryAddress;
+
+    /// @notice Emitted when factory address is set
+    event SetFactoryAddress(address indexed factory);
+
+    modifier onlyFactory() {
+        require(msg.sender == factoryAddress, "only factory can call deploy");
+        _;
+    }
+
+    function setFactoryAddress(address _factoryAddress) external {
+        require(factoryAddress == address(0), "already initialized");
+
+        factoryAddress = _factoryAddress;
+
+        emit SetFactoryAddress(_factoryAddress);
+    }
+
     /// @dev Deploys a pool with the given parameters by transiently setting the parameters storage slot and then
     /// clearing it after deploying the pool.
     /// @param factory The contract address of the Uniswap V3 factory
@@ -30,7 +48,7 @@ contract UniswapV3PoolDeployer is IUniswapV3PoolDeployer {
         address token1,
         uint24 fee,
         int24 tickSpacing
-    ) internal returns (address pool) {
+    ) external override onlyFactory returns (address pool) {
         parameters = Parameters({factory: factory, token0: token0, token1: token1, fee: fee, tickSpacing: tickSpacing});
         pool = address(new UniswapV3Pool{salt: keccak256(abi.encode(token0, token1, fee))}());
         delete parameters;

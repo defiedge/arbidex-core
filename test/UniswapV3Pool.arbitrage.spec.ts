@@ -58,7 +58,7 @@ describe('UniswapV3Pool arbitrage tests', () => {
     loadFixture = createFixtureLoader([wallet, arbitrageur])
   })
 
-  for (const feeProtocol of [0, 6]) {
+  for (const feeProtocol of [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]) {
     describe(`protocol fee = ${feeProtocol};`, () => {
       const startingPrice = encodePriceSqrt(1, 1)
       const startingTick = 0
@@ -105,7 +105,7 @@ describe('UniswapV3Pool arbitrage tests', () => {
             await fix.token1.approve(tester.address, MaxUint256)
 
             await pool.initialize(startingPrice)
-            if (feeProtocol != 0) await pool.setFeeProtocol(feeProtocol, feeProtocol)
+            if (feeProtocol != 1) await pool.setFeeProtocol(feeProtocol, feeProtocol)
             await mint(wallet.address, minTick, maxTick, passiveLiquidity)
 
             expect((await pool.slot0()).tick).to.eq(startingTick)

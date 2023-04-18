@@ -1,10 +1,12 @@
 import { Wallet } from 'ethers'
 import { ethers, waffle } from 'hardhat'
 import { UniswapV3Factory } from '../typechain/UniswapV3Factory'
+import { UniswapV3PoolDeployer } from '../typechain/UniswapV3PoolDeployer'
+import { ProtocolFeeSplitter } from '../typechain/ProtocolFeeSplitter'
 import { expect } from './shared/expect'
 import snapshotGasCost from './shared/snapshotGasCost'
 
-import { FeeAmount, getCreate2Address, TICK_SPACINGS } from './shared/utilities'
+import { FeeAmount, getCreate2Address, MAX_SQRT_RATIO, MaxUint128, TICK_SPACINGS, encodePriceSqrt } from './shared/utilities'
 
 const { constants } = ethers
 
@@ -16,18 +18,27 @@ const TEST_ADDRESSES: [string, string] = [
 const createFixtureLoader = waffle.createFixtureLoader
 
 describe('UniswapV3Factory', () => {
-  let wallet: Wallet, other: Wallet
+  let wallet: Wallet, other: Wallet, other2: Wallet
 
   let factory: UniswapV3Factory
+  let poolDeployer: UniswapV3PoolDeployer
+  let arbidexFeeSplitter: ProtocolFeeSplitter
   let poolBytecode: string
+
   const fixture = async () => {
+    let ProtocolFeeSplitter = await ethers.getContractFactory('ProtocolFeeSplitter');
+    arbidexFeeSplitter = await ProtocolFeeSplitter.deploy(other.address, other2.address) as ProtocolFeeSplitter;
+
+    let UniswapV3PoolDeployer = await ethers.getContractFactory('UniswapV3PoolDeployer');
+    poolDeployer = await UniswapV3PoolDeployer.deploy() as UniswapV3PoolDeployer;
+
     const factoryFactory = await ethers.getContractFactory('UniswapV3Factory')
-    return (await factoryFactory.deploy()) as UniswapV3Factory
+    return (await factoryFactory.deploy(poolDeployer.address, arbidexFeeSplitter.address)) as UniswapV3Factory
   }
 
   let loadFixture: ReturnType<typeof createFixtureLoader>
   before('create fixture loader', async () => {
-    ;[wallet, other] = await (ethers as any).getSigners()
+    ;[wallet, other, other2] = await (ethers as any).getSigners()
 
     loadFixture = createFixtureLoader([wallet, other])
   })
@@ -38,10 +49,21 @@ describe('UniswapV3Factory', () => {
 
   beforeEach('deploy factory', async () => {
     factory = await loadFixture(fixture)
+
+    await arbidexFeeSplitter.setFactoryAddress(factory.address)
+    await poolDeployer.setFactoryAddress(factory.address)
   })
 
   it('owner is deployer', async () => {
     expect(await factory.owner()).to.eq(wallet.address)
+  })
+
+  it('should set pool deployer address', async () => {
+    expect(await factory.poolDeployer()).to.eq(poolDeployer.address)
+  })
+
+  it('should set fee splitter address address', async () => {
+    expect(await factory.PROTOCOL_FEES_RECIPIENT()).to.eq(arbidexFeeSplitter.address)
   })
 
   it('factory bytecode size', async () => {
@@ -50,7 +72,7 @@ describe('UniswapV3Factory', () => {
 
   it('pool bytecode size', async () => {
     await factory.createPool(TEST_ADDRESSES[0], TEST_ADDRESSES[1], FeeAmount.MEDIUM)
-    const poolAddress = getCreate2Address(factory.address, TEST_ADDRESSES, FeeAmount.MEDIUM, poolBytecode)
+    const poolAddress = getCreate2Address(poolDeployer.address, TEST_ADDRESSES, FeeAmount.MEDIUM, poolBytecode)
     expect(((await waffle.provider.getCode(poolAddress)).length - 2) / 2).to.matchSnapshot()
   })
 
@@ -60,12 +82,13 @@ describe('UniswapV3Factory', () => {
     expect(await factory.feeAmountTickSpacing(FeeAmount.HIGH)).to.eq(TICK_SPACINGS[FeeAmount.HIGH])
   })
 
+
   async function createAndCheckPool(
     tokens: [string, string],
     feeAmount: FeeAmount,
     tickSpacing: number = TICK_SPACINGS[feeAmount]
   ) {
-    const create2Address = getCreate2Address(factory.address, tokens, feeAmount, poolBytecode)
+    const create2Address = getCreate2Address(poolDeployer.address, tokens, feeAmount, poolBytecode)
     const create = factory.createPool(tokens[0], tokens[1], feeAmount)
 
     await expect(create)
@@ -172,6 +195,61 @@ describe('UniswapV3Factory', () => {
     it('enables pool creation', async () => {
       await factory.enableFeeAmount(250, 15)
       await createAndCheckPool([TEST_ADDRESSES[0], TEST_ADDRESSES[1]], 250, 15)
+    })
+  })
+
+  describe('#setDefaultProtocolFees', () => {
+    it('fails if caller is not owner', async () => {
+      await expect(factory.connect(other).setDefaultProtocolFees(100, 2)).to.be.revertedWith("Not owner")
+    })
+    it('fails if fee greater then 10', async () => {
+      await expect(factory.setDefaultProtocolFees(8, 11)).to.be.revertedWith("Invalid Fees")
+      await expect(factory.setDefaultProtocolFees(11, 8)).to.be.revertedWith("Invalid Fees")
+      await expect(factory.setDefaultProtocolFees(11, 14)).to.be.revertedWith("Invalid Fees")
+    })
+    it('should set default protocol fees', async () => {
+      expect(await factory.defaultProtocolFees()).to.eq(17)
+
+      await factory.setDefaultProtocolFees(7, 7);
+      expect(await factory.defaultProtocolFees()).to.eq(119)
+
+      await factory.setDefaultProtocolFees(5, 8);
+      expect(await factory.defaultProtocolFees()).to.eq(133)
+
+      await factory.setDefaultProtocolFees(0, 0);
+      expect(await factory.defaultProtocolFees()).to.eq(0)
+    })
+    it('emits an event when turned on', async () => {
+      await expect(factory.setDefaultProtocolFees(7, 7)).to.be.emit(factory, 'DefaultProtocolFeesChanged').withArgs(1, 1, 7, 7)
+    })
+    it('emits an event when turned off', async () => {
+      await factory.setDefaultProtocolFees(7, 5)
+      await expect(factory.setDefaultProtocolFees(0, 0)).to.be.emit(factory, 'DefaultProtocolFeesChanged').withArgs(7, 5, 0, 0)
+    })
+    it('emits an event when changed', async () => {
+      await factory.setDefaultProtocolFees(4, 10)
+      await expect(factory.setDefaultProtocolFees(6, 8)).to.be.emit(factory, 'DefaultProtocolFeesChanged').withArgs(4, 10, 6, 8)
+    })
+    it('emits an event when unchanged', async () => {
+      await factory.setDefaultProtocolFees(5, 9)
+      await expect(factory.setDefaultProtocolFees(5, 9)).to.be.emit(factory, 'DefaultProtocolFeesChanged').withArgs(5, 9, 5, 9)
+    })
+  })
+
+  describe('#collectProtocolFees', () => {
+    it('fails if caller is not owner', async () => {
+      await expect(factory.connect(other).collectProtocolFees(wallet.address, MaxUint128, MaxUint128)).to.be.reverted;
+    })
+    it('not fails if caller is owner', async () => {
+      await factory.createPool(TEST_ADDRESSES[0], TEST_ADDRESSES[1], FeeAmount.MEDIUM);
+      let pool = await factory.getPool(TEST_ADDRESSES[0], TEST_ADDRESSES[1], FeeAmount.MEDIUM)
+      let poolInstance = await ethers.getContractAt("UniswapV3Pool", pool)
+      await poolInstance.initialize(encodePriceSqrt(1, 1))
+
+      await expect(factory.collectProtocolFees(pool, MaxUint128, MaxUint128)).to.be.not.reverted;
+    })
+    it('fails if caller is not owner', async () => {
+      await expect(factory.connect(other).collectProtocolFees(wallet.address, MaxUint128, MaxUint128)).to.be.reverted;
     })
   })
 })

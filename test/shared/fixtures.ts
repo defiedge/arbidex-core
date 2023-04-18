@@ -5,6 +5,7 @@ import { TestERC20 } from '../../typechain/TestERC20'
 import { UniswapV3Factory } from '../../typechain/UniswapV3Factory'
 import { TestUniswapV3Callee } from '../../typechain/TestUniswapV3Callee'
 import { TestUniswapV3Router } from '../../typechain/TestUniswapV3Router'
+import { ProtocolFeeSplitter } from '../../typechain/ProtocolFeeSplitter'
 import { MockTimeUniswapV3PoolDeployer } from '../../typechain/MockTimeUniswapV3PoolDeployer'
 
 import { Fixture } from 'ethereum-waffle'
@@ -13,9 +14,9 @@ interface FactoryFixture {
   factory: UniswapV3Factory
 }
 
-async function factoryFixture(): Promise<FactoryFixture> {
+async function factoryFixture(poolDeployer: any, feeSplitter: any): Promise<FactoryFixture> {
   const factoryFactory = await ethers.getContractFactory('UniswapV3Factory')
-  const factory = (await factoryFactory.deploy()) as UniswapV3Factory
+  const factory = (await factoryFactory.deploy(poolDeployer, feeSplitter)) as UniswapV3Factory
   return { factory }
 }
 
@@ -43,6 +44,7 @@ type TokensAndFactoryFixture = FactoryFixture & TokensFixture
 interface PoolFixture extends TokensAndFactoryFixture {
   swapTargetCallee: TestUniswapV3Callee
   swapTargetRouter: TestUniswapV3Router
+  protocolFeeSplitter: ProtocolFeeSplitter
   createPool(
     fee: number,
     tickSpacing: number,
@@ -54,8 +56,18 @@ interface PoolFixture extends TokensAndFactoryFixture {
 // Monday, October 5, 2020 9:00:00 AM GMT-05:00
 export const TEST_POOL_START_TIME = 1601906400
 
-export const poolFixture: Fixture<PoolFixture> = async function (): Promise<PoolFixture> {
-  const { factory } = await factoryFixture()
+export const poolFixture: Fixture<PoolFixture> = async function ([wallet]): Promise<PoolFixture> {
+  let ProtocolFeeSplitter = await ethers.getContractFactory('ProtocolFeeSplitter');
+  let protocolFeeSplitter = (await ProtocolFeeSplitter.deploy(wallet.address, "0x0000000000000000000000000000000000000002")) as ProtocolFeeSplitter;
+
+  let UniswapV3PoolDeployer = await ethers.getContractFactory('UniswapV3PoolDeployer');
+  let poolDeployer = await UniswapV3PoolDeployer.deploy();
+
+  const { factory } = await factoryFixture(poolDeployer.address, protocolFeeSplitter.address);
+
+  await protocolFeeSplitter.setFactoryAddress(factory.address)
+  await poolDeployer.setFactoryAddress(factory.address)
+
   const { token0, token1, token2 } = await tokensFixture()
 
   const MockTimeUniswapV3PoolDeployerFactory = await ethers.getContractFactory('MockTimeUniswapV3PoolDeployer')
@@ -74,6 +86,7 @@ export const poolFixture: Fixture<PoolFixture> = async function (): Promise<Pool
     factory,
     swapTargetCallee,
     swapTargetRouter,
+    protocolFeeSplitter,
     createPool: async (fee, tickSpacing, firstToken = token0, secondToken = token1) => {
       const mockTimePoolDeployer = (await MockTimeUniswapV3PoolDeployerFactory.deploy()) as MockTimeUniswapV3PoolDeployer
       const tx = await mockTimePoolDeployer.deploy(

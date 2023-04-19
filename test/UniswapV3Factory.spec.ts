@@ -50,6 +50,11 @@ describe('UniswapV3Factory', () => {
   beforeEach('deploy factory', async () => {
     factory = await loadFixture(fixture)
 
+    await factory.enableFeeAmount(500,10);
+    await factory.enableFeeAmount(3000,60);
+    await factory.enableFeeAmount(10000,200);
+    
+
     await arbidexFeeSplitter.setFactoryAddress(factory.address)
     await poolDeployer.setFactoryAddress(factory.address)
   })

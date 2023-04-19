@@ -67,7 +67,6 @@ export const poolFixture: Fixture<PoolFixture> = async function ([wallet]): Prom
 
   await factory.enableFeeAmount(500,10);
   await factory.enableFeeAmount(3000,60);
-  await factory.enableFeeAmount(10000,200);
   
   await protocolFeeSplitter.setFactoryAddress(factory.address)
   await poolDeployer.setFactoryAddress(factory.address)

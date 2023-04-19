@@ -52,7 +52,6 @@ describe('UniswapV3Factory', () => {
 
     await factory.enableFeeAmount(500,10);
     await factory.enableFeeAmount(3000,60);
-    await factory.enableFeeAmount(10000,200);
     
 
     await arbidexFeeSplitter.setFactoryAddress(factory.address)

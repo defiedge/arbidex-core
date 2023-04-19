@@ -32,12 +32,12 @@ contract UniswapV3Factory is IUniswapV3Factory, NoDelegateCall {
         owner = msg.sender;
         emit OwnerChanged(address(0), msg.sender);
 
-        feeAmountTickSpacing[500] = 10;
-        emit FeeAmountEnabled(500, 10);
-        feeAmountTickSpacing[3000] = 60;
-        emit FeeAmountEnabled(3000, 60);
-        feeAmountTickSpacing[10000] = 200;
-        emit FeeAmountEnabled(10000, 200);
+        feeAmountTickSpacing[490] = 10;
+        emit FeeAmountEnabled(490, 10);
+        feeAmountTickSpacing[2500] = 60;
+        emit FeeAmountEnabled(2500, 60);
+        feeAmountTickSpacing[9000] = 200;
+        emit FeeAmountEnabled(9000, 200);
 
         defaultProtocolFees = 1 + (1 << 4); // setting default fees to 100%
         emit DefaultProtocolFeesChanged(0, 0, defaultProtocolFees % 16, defaultProtocolFees >> 4);

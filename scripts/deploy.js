@@ -7,7 +7,6 @@ async function main() {
 
     const NEW_OWNER = ""
 
-    /* -------- Deploying TEST FRAMING POOL contracts ---------- */
     let UniswapV3PoolDeployer = await ethers.getContractFactory("UniswapV3PoolDeployer");
     const poolDeployer = await UniswapV3PoolDeployer.deploy()
     console.log(`🎉 UniswapV3PoolDeployer Deployed to: ${poolDeployer.address}`)
